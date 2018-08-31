@@ -1,0 +1,230 @@
+;
+; update daily UKMO Ubar in IDL save format
+;
+@stddat
+@kgmt
+@ckday
+@kdate
+@rd_ukmo_nwp
+;
+; Ask interactive questions- get starting/ending dates
+;
+!type=2^2+2^3
+month=['January','February','March','April','May','June',$
+       'July','August','September','October','November','December']
+ofile='/atmos/harvey/UKMO_data/Datfiles/ukmo_12Z_Ubar_Tbar_3D.sav'
+restore,ofile
+oldp=p
+ubar_old=ubar
+tbar_old=tbar
+sdate_old=sdate
+kdayold=n_elements(sdate_old)
+maxdate=max(sdate_old)
+lstmn=strmid(maxdate,4,2)
+lstdy=strmid(maxdate,6,2)
+lstyr=strmid(maxdate,0,4)
+print,'Last Day ',lstyr,lstmn,lstdy
+ledmn=12 & leddy=13 & ledyr=2015
+lstday=0 & ledday=0
+;read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
+;read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
+z = stddat(lstmn,lstdy,lstyr,lstday)
+z = stddat(ledmn,leddy,ledyr,ledday)
+if ledday lt lstday then stop,' Wrong dates! '
+kday=long(ledday-lstday+1L)
+sdate=strarr(kday)
+icount=0L
+;
+; Compute initial Julian date
+;
+iyr = lstyr
+idy = lstdy
+imn = lstmn
+z = kgmt(imn,idy,iyr,iday)
+;iday = iday - 1
+;
+; loop over days (start with the day after maxdate)
+;
+jump: iday = iday + 1
+      kdate,float(iday),iyr,imn,idy
+      ckday,iday,iyr
+
+; --- Test for end condition and close windows.
+      z = stddat(imn,idy,iyr,ndays)
+      if ndays lt lstday then stop,' starting day outside range '
+      if ndays gt ledday then goto,saveit
+      syr=string(FORMAT='(i4)',iyr)
+      syr1=strmid(syr,2,2)
+      smn=string(FORMAT='(i2.2)',imn)
+      sdy=string(FORMAT='(i2.2)',idy)
+      date=syr+smn+sdy
+      sdate(icount)=date
+;
+; have Met Office pressure data from Sep 28th 1991 to Nov 10th 2007 in IDL save format with filenames like this - ppassm_y07_m04_d25_h12.pp.sav
+; NOTE - latitude goes from North to South
+;
+; ALAT            FLOAT     = Array[73]
+; ALON            FLOAT     = Array[96]
+; P               FLOAT     = Array[22]
+; T3D             FLOAT     = Array[96, 73, 22]
+; U3D             FLOAT     = Array[96, 72, 22]
+; V3D             FLOAT     = Array[96, 72, 22]
+; WLAT            FLOAT     = Array[72]
+; WLON            FLOAT     = Array[96]
+; Z3D             FLOAT     = Array[96, 73, 22]
+;
+; have Met Office pressure data from Jan 1st 2007 to the present in netCDF format with filenames like this - ukmo-nwp-strat_gbl-std_2007010112_u-v-gph-t-w_uars.nc
+;
+; read save data prior to 2007
+; read netcdf data beginning in 2007
+;
+      if iyr le 2006 then begin
+         restore,'/atmos/harvey/UKMO_data/Datfiles/ppassm_y'+syr1+'_m'+smn+'_d'+sdy+'_h12.pp.sav'
+         nc=n_elements(wlon)
+         nr=n_elements(wlat)
+         nr1=n_elements(alat)
+         nlv=n_elements(p)
+;
+; reverse latitude
+;
+         u3d_sorted=0.*u3d
+         t3d_sorted=0.*t3d
+         index=sort(wlat)
+         index2=sort(alat)
+         for i=0L,nc-1L do begin
+             for k=0L,nlv-1L do begin
+                 u3d_sorted(i,*,k)=u3d(i,index,k)
+                 t3d_sorted(i,*,k)=t3d(i,index2,k)
+             endfor
+         endfor
+         u3d=u3d_sorted
+         t3d=t3d_sorted
+         wlat=wlat(index)
+         alat=alat(index2)
+      endif
+      if iyr gt 2006 then begin
+         if date le 20150503L then begin
+            ifile='/atmos/harvey/UKMO_data/Datfiles/ukmo-nwp-strat_gbl-std_'+date+'12_u-v-gph-t-w_uars.nc'
+            iflg=0L
+            rd_ukmo_nwp,ifile,nc,nr,nc1,nr1,nlv,wlon,alon,wlat,alat,p,z3d,t3d,u3d,v3d,iflg
+oldp=p
+            if iflg gt 0L then print,'missing data on '+date
+            if iflg gt 0L then goto,jumpday
+         endif
+;
+; after May 3rd 2015 filenames are like this - ppassm_y15_m05_d04_h12.pp.sav
+; save files (as before) are ordered north to south. also, the data
+; and have 31 pressure levels that are different from before
+; 1) reorder south to north
+; 2) interpolate to old pressure levels
+;
+         if date gt 20150503L then begin
+            result=findfile('/atmos/harvey/UKMO_data/Datfiles/ppassm_y'+syr1+'_m'+smn+'_d'+sdy+'_h12.pp.sav')
+            if result(0) eq '' then print,'missing data on '+date
+            if result(0) eq '' then goto,jumpday
+            restore,'/atmos/harvey/UKMO_data/Datfiles/ppassm_y'+syr1+'_m'+smn+'_d'+sdy+'_h12.pp.sav'
+            print,'read Met Office data on '+date
+         nc=n_elements(wlon)
+         nr=n_elements(wlat)
+         nr1=n_elements(alat)
+         nlv=n_elements(p)
+;
+; reverse latitude
+;
+         u3d_sorted=0.*u3d
+         t3d_sorted=0.*t3d
+         index=sort(wlat)
+         index2=sort(alat)
+         for i=0L,nc-1L do begin
+             for k=0L,nlv-1L do begin
+                 u3d_sorted(i,*,k)=u3d(i,index,k)
+                 t3d_sorted(i,*,k)=t3d(i,index2,k)
+             endfor
+         endfor
+         u3d=u3d_sorted
+         t3d=t3d_sorted
+         wlat=wlat(index)
+         alat=alat(index2)
+;
+; interpolate to old pressure levels!
+;
+z3dnew=z3d
+t3dnew=t3d
+u3dnew=u3d
+v3dnew=v3d
+nlvold=n_elements(oldp)
+z3d=fltarr(nc,nr1,nlvold)
+t3d=fltarr(nc,nr1,nlvold)
+u3d=fltarr(nc,nr,nlvold)
+v3d=fltarr(nc,nr,nlvold)
+for i=0L,nc-1L do begin
+for j=0L,nr-1L do begin
+    u3d(i,j,*)=interpol(reform(u3dnew(i,j,*)),alog(p),alog(oldp))
+    v3d(i,j,*)=interpol(reform(v3dnew(i,j,*)),alog(p),alog(oldp))
+endfor
+for j=0L,nr1-1L do begin
+    t3d(i,j,*)=interpol(reform(t3dnew(i,j,*)),alog(p),alog(oldp))
+    z3d(i,j,*)=interpol(reform(z3dnew(i,j,*)),alog(p),alog(oldp))
+;if i eq 10 and j eq 10 then begin
+;   plot,reform(t3dnew(i,j,*)),p,/ylog,yrange=[1000,0.01],psym=2
+;   oplot,t3d(i,j,*),oldp,psym=4,color=250  
+;stop
+;endif
+endfor
+endfor
+;stop
+          endif
+       endif
+;
+; remove data above 1 hPa
+;
+      p=oldp
+      good=where(p ge 1.,nlv)
+      u3d=reform(u3d(*,*,good))
+      t3d=reform(t3d(*,*,good))
+      p=reform(p(good))
+      if min(p) ne 1.0 then goto,jumpday
+      print,'read Met Office data on '+date,max(u3d),icount
+      if icount eq 0L then begin
+         ubar=-99.+0.*fltarr(nr,nlv,kday)
+         tbar=-99.+0.*fltarr(nr1,nlv,kday)
+      endif
+;
+; zonal mean U and T
+;
+       for k=0L,nlv-1 do begin
+          for j=0L,nr-1L do ubar(j,k,icount)=mean(u3d(*,j,k))
+          for j=0L,nr1-1L do tbar(j,k,icount)=mean(t3d(*,j,k))
+       endfor
+       contour,ubar(*,*,icount),wlat,p,/ylog,xrange=[-90.,90.],yrange=[1000.,1.],title='Ubar '+date,$
+               xtitle='Latitude',ytitle='Pressure (hPa)',charsize=2,charthick=2,xticks=6,/nodata
+       contour,ubar(*,*,icount),wlat,p,/ylog,/overplot,levels=10+10*findgen(20)
+       contour,ubar(*,*,icount),wlat,p,/ylog,/overplot,levels=-200+10*findgen(20),c_linestyle=5
+       xyouts,-10.,70.,month(imn-1),/data,charsize=2,charthick=2
+      jumpday:
+      icount=icount+1L
+goto,jump
+;
+; save file
+;
+saveit:
+sdate_new=[sdate_old,sdate(0:icount-1L)]
+ubar_new=fltarr(nr,nlv,icount+kdayold)
+tbar_new=fltarr(nr1,nlv,icount+kdayold)
+for i=0L,kdayold-1L do begin
+    ubar_new(*,*,i)=ubar_old(*,*,i)
+    tbar_new(*,*,i)=tbar_old(*,*,i)
+endfor
+for i=0,icount-1L do begin
+    ubar_new(*,*,kdayold+i)=ubar(*,*,i)
+    tbar_new(*,*,kdayold+i)=tbar(*,*,i)
+    print,'adding '+sdate(i),max(ubar(*,*,i)),i
+endfor
+;
+; rename
+;
+sdate=sdate_new
+ubar=ubar_new
+tbar=tbar_new
+save,filename=ofile,ubar,tbar,alat,wlat,p,sdate
+end
