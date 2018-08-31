@@ -5,7 +5,7 @@
 @kgmt
 @ckday
 @kdate
-@rd_merra_nc3
+@rd_merra2_nc3
 
 loadct,39
 mcolor=byte(!p.color)
@@ -19,11 +19,11 @@ nydim=800
 cbaryoff=0.065
 cbarydel=0.02
 lstmn=1
-lstdy=1
-lstyr=2004
-ledmn=4
-leddy=1
-ledyr=2004
+lstdy=25
+lstyr=2015
+ledmn=1
+leddy=27
+ledyr=2015
 lstday=0
 ledday=0
 set_plot,'ps'
@@ -33,10 +33,10 @@ setplot='ps'
 ; Ask interactive questions- get starting/ending date and p surface
 ;
 print, ' '
-print, '      MERRA Version '
+print, '      MERRA2 Version '
 print, ' '
-read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
-read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
+;read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
+;read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
 z = stddat(lstmn,lstdy,lstyr,lstday)
 z = stddat(ledmn,leddy,ledyr,ledday)
 if ledday lt lstday then stop,' Wrong dates! '
@@ -52,8 +52,8 @@ mon=['jan','feb','mar','apr','may','jun',$
 month=['January','February','March','April','May','June',$
        'July','August','September','October','November','December']
 !noeras=1
-dir='/Volumes/Data/MERRA_data/Datfiles/MERRA-on-WACCM_theta_'
-stime=['00Z','06Z','12Z','18Z']
+dir='/atmos/harvey/MERRA2_data/Datfiles/MERRA2-on-WACCM_theta_'
+stime=['00','06','12','18']
 ntime=n_elements(stime)
 
 ; Compute initial Julian date
@@ -76,12 +76,21 @@ jump: iday = iday + 1
       date=strcompress(string(FORMAT='(A3,A1,I2,A2,I4)',$
                               month(imn-1),' ',idy,', ',iyr))
 
-      for itime=0L,0L do begin
+      for itime=0L,ntime-1L do begin
 
-      ifile=string(FORMAT='(i4.4,i2.2,i2.2)',iyr,imn,idy)+'.nc3'
-      rd_merra_nc3,dir+ifile,nc,nr,nth,alon,alat,th,pv2,p2,$
-         u2,v2,qdf2,mark2,qv2,z2,sf2,q2,iflag
+      ifile=string(FORMAT='(i4.4,i2.2,i2.2)',iyr,imn,idy)+stime(itime)
+      rd_merra2_nc3,dir+ifile+'.nc3',nc,nr,nth,alon,alat,th,pv2,p2,$
+         u2,v2,qdf2,mark2,qv2,z2,sf2,q2,o32,iflag
       if iflag ne 0L then goto,jump
+;
+; read marker that includes circumpolar highs
+;
+      ncid=ncdf_open(dir+ifile+'.nc4')
+      mark2new=fltarr(nr,nc,nth)
+      ncdf_varget,ncid,3,mark2new
+      ncdf_close,ncid
+mark2=mark2new
+
 tmp2=0.*p2
 for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
       if iflag eq 1 then goto,jump
@@ -91,7 +100,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
 
 ; select theta levels to plot
     if icount eq 0L then begin
-       zindex=where(th ge 300. and th le 5000.,nth2)
+       zindex=where(th ge 300. and th le 4800.,nth2)
        thlevs=reverse(strcompress(string(fix(th(zindex))))+' K')
        thlw=min(th(zindex))
        thup=max(th(zindex))
@@ -113,7 +122,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
        !psym=0
        !p.font=0
        device,font_size=9
-       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D.ps'
+       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D+PFRR.ps'
        device,/color
        device,/inch,xoff=4.25-ysize/2.,yoff=5.5+xsize/2.,$
               xsize=xsize,ysize=ysize
@@ -156,7 +165,12 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
     surface,dum,xcn,ycn,xrange=[-1.0,1.0],yrange=[-1.0,1.0],/noeras,$
             zrange=[thlw,thup],/save,/nodata,zstyle=4,charsize=3.0,az=irot
     col1=fltarr(nth2)
+    nz0=fltarr(nth2)
+    for kk=0,nth2-1 do nz0(kk)=kk*(1./(nth2-1.)) ; equally spaced in the vertical stretches subvortex
     for kk=0,nth2-1 do begin
+        km1=kk-1 & kp1=kk+1
+        if kk eq 0 then km1=0
+        if kk eq nth2-1 then kp1=nth2-1
         index=where(th eq th2(kk))
         lev=index(0)
         nz=kk*(1./(nth2-1.))
@@ -168,6 +182,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
         pv1=transpose(pv2(*,*,lev))
         p1=transpose(p2(*,*,lev))
         mpv1=pv1*((th(lev)/300.))^(-9./2.)
+        z1=transpose(z2(*,*,lev))
 
 ; temperature
         temp1=th(lev)*(p1/1000.)^.286
@@ -180,11 +195,11 @@ print,th(lev),min(temp1),max(temp1)
         if index(0) ne -1 then temp(index)=1.e15
 
 ; pressure of theta surface
-        index=where(p1 ne 0.)
+        index=where(z1 ne 0.)
         if n_elements(index) eq 1L then goto,jumplev
-	result=moment(p1(index))
+	result=moment(z1(index))
 	avgz=result(0)
-        savgz=strcompress(string(FORMAT='(F7.3)',avgz))
+        savgz=strcompress(string(FORMAT='(i2)',round(avgz)))
 
 ; draw latitude circles
         if kk eq 0 then begin
@@ -318,20 +333,38 @@ dx=x2d(1,0)-x2d(0,0)
 
 loadct,39
         endif
+;
+; superimpose profile at Chatanika, Alaska lidar site (65N, 147W)
+;
+yy=65. & xx=213.
+               ANG = (90. - yy) * RADG * 0.5
+               FACTOR = TAN(ANG) * FAC20
+               THETA0 = (xx - 90.) * RADG
+               xn = FACTOR * COS(THETA0)
+               yn = FACTOR * SIN(THETA0)
+               a=findgen(8)*(2*!pi/8.)
+               usersym,2*cos(a),2*sin(a),/fill
+               oplot,[xn,xn],[yn,yn],zvalue=nz0(kk),/T3D,psym=8,color=mcolor*.95
+               dist=nz0(kp1)-nz0(kk)
+               if dist gt 0. then begin
+               for m=0,10 do $
+                   oplot,[xn,xn],[yn,yn],zvalue=nz0(kk)+float(m)*dist/11.,/T3D,psym=8,color=mcolor*.95
+               endif
+
 jumplev:
-        xyouts,.83,nz4,savgz,color=0,/normal,charsize=2,charthick=2
-        xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
+        if kk mod 2 eq 0 then xyouts,.1,nz4,savgz,color=0,/normal,charsize=2,charthick=2
+;       if kk mod 2 eq 0 then xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
     endfor	; loop over stacked polar plots
     !psym=0
-    xyouts,0.35,0.88,'MERRA '+date,/normal,charsize=3.0,color=0,charthick=2
-    xyouts,.08,.85,'Theta (K)',charsize=2,/normal,color=0,charthick=2
-    xyouts,.78,.85,'Pressure (hPa)',charsize=2,/normal,color=0,charthick=2
+    xyouts,0.35,0.88,ifile,/normal,charsize=3.0,color=0,charthick=2
+;   xyouts,.08,.85,'Theta (K)',charsize=2,/normal,color=0,charthick=2
+    xyouts,.08,.85,'Altitude (km)',charsize=2,/normal,color=0,charthick=2
     set_viewport,.2,.78,.14-cbaryoff,.14-cbaryoff+cbarydel
     !type=2^2+2^3+2^6
     iint=(imax-imin)/12.
     level=imin+iint*findgen(13)
     plot,[imin,imax],[0,0],yrange=[0,10],$
-          xrange=[imin,imax],xtitle='Temperature',/noeras,$
+          xrange=[imin,imax],xtitle='MERRA2 Temperature',/noeras,$
           xtickname=strcompress(string(fix(level)),/remove_all),$
           xstyle=1,xticks=12,charsize=1.5,color=0,charthick=2
     ybox=[0,10,10,0,0]
@@ -346,8 +379,8 @@ jumplev:
     if setplot ne 'ps' then stop
     if setplot eq 'ps' then begin
        device,/close
-       spawn,'convert -trim Arctic_3D/'+ifile+'_3D.ps -rotate -90 Arctic_3D/'+ifile+'_3D.jpg'
-       spawn,'rm -f Arctic_3D/'+ifile+'_3D.ps'
+       spawn,'convert -trim Arctic_3D/'+ifile+'_3D+PFRR.ps -rotate -90 Arctic_3D/'+ifile+'_3D+PFRR.jpg'
+       spawn,'rm -f Arctic_3D/'+ifile+'_3D+PFRR.ps'
     endif
 
     endfor

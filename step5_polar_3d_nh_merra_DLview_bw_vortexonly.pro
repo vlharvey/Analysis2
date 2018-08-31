@@ -1,13 +1,26 @@
 ;
 ; 3-D Arctic vortex and Anticyclones in black poleward of 13.75N
 ;
+; Geographic coordinates of incoherent scatter radars:
+;
+; Svalbard, 78.1N, 16E
+; RISR-N, 75N, 266E
+; Sondrestrom, 67.0N, 309.1E
+; EISCAT Mainland 69.6N, 19.2E
+; Poker Flat, 65N, 213E
+; Millstone Hill, 42.6N, 288.5E
+; Irkutsk 52.9N, 103.1E
+; Kharkov 49.7N, 36.3E
+; Arecibo 18.3N, 293.3E
+; Jicamarca 12.0S 283.1E
+;
 @stddat
 @kgmt
 @ckday
 @kdate
 @rd_merra_nc3
 
-loadct,39
+loadct,0
 mcolor=byte(!p.color)
 icolmax=byte(!p.color)
 icolmax=fix(icolmax)
@@ -20,23 +33,29 @@ cbaryoff=0.065
 cbarydel=0.02
 lstmn=1
 lstdy=1
-lstyr=2004
+lstyr=2016
 ledmn=4
 leddy=1
-ledyr=2004
+ledyr=2016
 lstday=0
 ledday=0
 set_plot,'ps'
 setplot='ps'
-;read,'setplot= ',setplot
+read,'setplot= ',setplot
+
+ssites=' '+['Svalbard','RISR-N','Sondrestrom','EISCAT','Poker','Millstone','Irkutsk','Kharkov','Arecibo','Jicamarca']
+ysites=[78.1,75.,67.,69.6,65.,42.6,52.9,49.7,18.3,12.]
+xsites=[16.,266.,309.1,19.2,213.,288.5,103.1,36.3,293.3,283.1]
+nsites=n_elements(ysites)
+col2=(findgen(nsites)/float(nsites))*mcolor
 ;
 ; Ask interactive questions- get starting/ending date and p surface
 ;
 print, ' '
 print, '      MERRA Version '
 print, ' '
-read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
-read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
+;read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
+;read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
 z = stddat(lstmn,lstdy,lstyr,lstday)
 z = stddat(ledmn,leddy,ledyr,ledday)
 if ledday lt lstday then stop,' Wrong dates! '
@@ -113,7 +132,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
        !psym=0
        !p.font=0
        device,font_size=9
-       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D.ps'
+       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D_bw_vortexonly.ps'
        device,/color
        device,/inch,xoff=4.25-ysize/2.,yoff=5.5+xsize/2.,$
               xsize=xsize,ysize=ysize
@@ -152,11 +171,18 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
     set_viewport,.1,.9,.1,.9
     !type=2^6+2^5     ; suppress x and y axes
     dum=fltarr(nc+1,nr2)
-    irot=-110.
+    irot=-210.
+    nz0=fltarr(nth2)
+    for kk=0,nth2-1 do nz0(kk)=kk*(1./(nth2-1.)) ; equally spaced in the vertical stretches subvortex
+
     surface,dum,xcn,ycn,xrange=[-1.0,1.0],yrange=[-1.0,1.0],/noeras,$
             zrange=[thlw,thup],/save,/nodata,zstyle=4,charsize=3.0,az=irot
     col1=fltarr(nth2)
     for kk=0,nth2-1 do begin
+        km1=kk-1 & kp1=kk+1
+        if kk eq 0 then km1=0
+        if kk eq nth2-1 then kp1=nth2-1
+
         index=where(th eq th2(kk))
         lev=index(0)
         nz=kk*(1./(nth2-1.))
@@ -171,7 +197,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
 
 ; temperature
         temp1=th(lev)*(p1/1000.)^.286
-print,th(lev),min(temp1),max(temp1)
+;print,th(lev),min(temp1),max(temp1)
         temp=fltarr(nc+1,nr2)
         temp(0:nc-1,0:nr2-1)=temp1(0:nc-1,nr/2:nr-1)    ; NH
         temp(nc,*)=temp(0,*)
@@ -184,7 +210,7 @@ print,th(lev),min(temp1),max(temp1)
         if n_elements(index) eq 1L then goto,jumplev
 	result=moment(p1(index))
 	avgz=result(0)
-        savgz=strcompress(string(FORMAT='(F7.3)',avgz))
+        savgz=strcompress(string(FORMAT='(F6.2)',avgz))
 
 ; draw latitude circles
         if kk eq 0 then begin
@@ -192,7 +218,7 @@ print,th(lev),min(temp1),max(temp1)
         lon=findgen(361)
         lonp=0.*lon
         latp=0.*lon
-        for k=0,0 do begin
+        for k=0,2 do begin
             if k eq 0 then lat=0.*fltarr(361)
             if k eq 1 then lat=30.+0.*fltarr(361)
             if k eq 2 then lat=60.+0.*fltarr(361)
@@ -210,7 +236,6 @@ print,th(lev),min(temp1),max(temp1)
 ;
 ; fill continents grey
 ;
-        loadct,0
         map_continents,mlinethick=2,/t3d,zvalue=nz,color=mcolor*.4,/fill_continents
 ;
 ; superimpose stream function
@@ -222,8 +247,7 @@ print,th(lev),min(temp1),max(temp1)
         sint=(smax-smin)/15.
         sflevel=smin+sint*findgen(15)
         contour,dum,xcn,ycn,levels=sflevel,color=0,c_labels=0+0.*sflevel,$
-                /T3D,zvalue=nz,thick=1
-        loadct,39
+                /T3D,zvalue=nz,thick=3
         endif
  
         nz2=(kk+1.)*(1./(nth2+1.))
@@ -262,7 +286,7 @@ print,th(lev),min(temp1),max(temp1)
                oplot,[xcn(lindex(ii)),xcn(lindex(ii))],$
                      [ycn(lindex(ii)),ycn(lindex(ii))],$
                      /T3D,zvalue=nz,psym=8,symsize=2,$
-                     color=((temp(lindex(ii))-imin)/(imax-imin))*icolmax
+                     color=200	;((temp(lindex(ii))-imin)/(imax-imin))*icolmax
 ;              if temp(lindex(ii)) eq 1.e15 then $
 ;              oplot,[xcn(lindex(ii)),xcn(lindex(ii))],$
 ;                    [ycn(lindex(ii)),ycn(lindex(ii))],$
@@ -276,10 +300,9 @@ print,th(lev),min(temp1),max(temp1)
 ;
 ; anticyclones
 ;
-        lindex=where(dum lt 0.0,nl)
+        lindex=where(dum lt -990.0,nl)
         if lindex(0) ne -1 then begin
 ;          oplot,xcn(lindex),ycn(lindex),/T3D,zvalue=nz,psym=8,symsize=2,color=0
-loadct,0
 ;          contour,dum,xcn,ycn,levels=[-0.1],color=mcolor*.3,$
 ;                  c_labels=0,/T3D,zvalue=nz,thick=3
            nhigh=abs(min(dum(lindex)))
@@ -315,39 +338,38 @@ dx=x2d(1,0)-x2d(0,0)
                  /T3D,zvalue=nz,c_linestyle=0,/overplot,min_value=-9999.,thick=3
                jump1:
            endfor               ; loop over anticyclones
-
-loadct,39
         endif
+;
 jumplev:
-        xyouts,.83,nz4,savgz,color=0,/normal,charsize=2,charthick=2
-        xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
+        if kk mod 2 eq 0 then xyouts,.08,nz4,savgz,color=0,/normal,charsize=2,charthick=2
+;       xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
     endfor	; loop over stacked polar plots
     !psym=0
     xyouts,0.35,0.88,'MERRA '+date,/normal,charsize=3.0,color=0,charthick=2
-    xyouts,.08,.85,'Theta (K)',charsize=2,/normal,color=0,charthick=2
-    xyouts,.78,.85,'Pressure (hPa)',charsize=2,/normal,color=0,charthick=2
-    set_viewport,.2,.78,.14-cbaryoff,.14-cbaryoff+cbarydel
-    !type=2^2+2^3+2^6
-    iint=(imax-imin)/12.
-    level=imin+iint*findgen(13)
-    plot,[imin,imax],[0,0],yrange=[0,10],$
-          xrange=[imin,imax],xtitle='Temperature',/noeras,$
-          xtickname=strcompress(string(fix(level)),/remove_all),$
-          xstyle=1,xticks=12,charsize=1.5,color=0,charthick=2
-    ybox=[0,10,10,0,0]
-    x1=imin
-    dx=(imax-imin)/float(nth2)
-    for j=0,nth2-1 do begin
-      xbox=[x1,x1,x1+dx,x1+dx,x1]
-      polyfill,xbox,ybox,color=col1(j)
-      x1=x1+dx
-    endfor
+;   xyouts,.08,.85,'Theta (K)',charsize=2,/normal,color=0,charthick=2
+    xyouts,.05,.85,'Pressure (hPa)',charsize=2,/normal,color=0,charthick=2
+;    set_viewport,.2,.78,.14-cbaryoff,.14-cbaryoff+cbarydel
+;    !type=2^2+2^3+2^6
+;    iint=(imax-imin)/12.
+;    level=imin+iint*findgen(13)
+;    plot,[imin,imax],[0,0],yrange=[0,10],$
+;          xrange=[imin,imax],xtitle='Temperature',/noeras,$
+;          xtickname=strcompress(string(fix(level)),/remove_all),$
+;          xstyle=1,xticks=12,charsize=1.5,color=0,charthick=2
+;    ybox=[0,10,10,0,0]
+;    x1=imin
+;    dx=(imax-imin)/float(nth2)
+;    for j=0,nth2-1 do begin
+;      xbox=[x1,x1,x1+dx,x1+dx,x1]
+;      polyfill,xbox,ybox,color=col1(j)
+;      x1=x1+dx
+;    endfor
     !p.charthick=1.
     if setplot ne 'ps' then stop
     if setplot eq 'ps' then begin
        device,/close
-       spawn,'convert -trim Arctic_3D/'+ifile+'_3D.ps -rotate -90 Arctic_3D/'+ifile+'_3D.jpg'
-       spawn,'rm -f Arctic_3D/'+ifile+'_3D.ps'
+       spawn,'convert -trim Arctic_3D/'+ifile+'_3D_bw_vortexonly.ps -rotate -90 Arctic_3D/'+ifile+'_3D_bw_vortexonly.png'
+;      spawn,'rm -f Arctic_3D/'+ifile+'_3D_bw_vortexonly.ps'
     endif
 
     endfor

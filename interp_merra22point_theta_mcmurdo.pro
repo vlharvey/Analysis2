@@ -1,0 +1,574 @@
+;
+; input x,y,date,time
+; ouput MERRA2 theta data at McMurdo 77°51'S, 166°40'E
+;
+@calcelat2d
+@stddat
+@kgmt
+@ckday
+@kdate
+@rd_merra_nc3
+
+a=findgen(8)*(2*!pi/8.)
+usersym,cos(a),sin(a),/fill
+loadct,39
+icolmax=byte(!p.color)
+icolmax=fix(icolmax)
+if icolmax eq 0 then icolmax=255
+mcolor=icolmax
+device,decompose=0
+setplot='ps'
+read,'setplot=',setplot
+nxdim=700
+nydim=700
+xorig=[0.1,0.1,0.1]
+yorig=[0.7,0.4,0.1]
+xlen=0.8
+ylen=0.2
+cbaryoff=0.03
+cbarydel=0.01
+!NOERAS=-1
+if setplot ne 'ps' then begin
+   window,4,xsize=nxdim,ysize=nydim,retain=2,colors=162
+   !p.background=mcolor
+endif
+diru='/atmos/harvey/MERRA2_data/Datfiles/MERRA2-on-WACCM_theta_'
+pthout='/atmos/harvey/MERRA2_data/Pre_process/McMurdo/'
+mon=['jan_','feb_','mar_','apr_','may_','jun_',$
+     'jul_','aug_','sep_','oct_','nov_','dec_']
+lstmn=1L & lstdy=1L & lstyr=2011
+ledmn=12L & leddy=31L & ledyr=2015
+lstday=0L & ledday=0L
+;
+; Ask interactive questions- get starting/ending date and p surface
+;
+;read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
+;read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
+;read,' Enter starting year ',lstyr
+if lstyr lt 91 then lstyr=lstyr+2000
+if ledyr lt 91 then ledyr=ledyr+2000
+if lstyr lt 1900 then lstyr=lstyr+1900
+if ledyr lt 1900 then ledyr=ledyr+1900
+if lstyr lt 1979 then stop,'Year out of range '
+if ledyr lt 1979 then stop,'Year out of range '
+z = stddat(lstmn,lstdy,lstyr,lstday)
+z = stddat(ledmn,leddy,ledyr,ledday)
+if ledday lt lstday then stop,' Wrong dates! '
+kday=ledday-lstday+1L
+iyr = lstyr
+idy = lstdy
+imn = lstmn
+z = kgmt(imn,idy,iyr,iday)
+iday = iday - 1
+icount=0L
+kcount=0L
+time=12.
+;read,' Enter UT time (0-24 hours) ',time
+stime=strcompress(string(time))
+time=time/24.   ; convert to fractional day
+;slat=-67.57 & slon=291.88			; Rothera
+;slat=65.12 & slon=212.53			; Poker Flat
+;slat=67.8939 & slon=21.1069			; Esrange
+slat=-77.85 & slon=166.67			; McMurdo is 77°51'S, 166°40'E
+;read,' Enter longitude, latitude, theta ',slon,slat
+sloc='('+string(FORMAT='(f6.2)',slon)+','+string(FORMAT='(f6.2)',slat)+')'
+
+re=40000./2./!pi
+earth_area=4.*!pi*re*re
+hem_area=earth_area/2.0
+rtd=double(180./!pi)
+dtr=1./rtd
+ks=1.931853d-3
+ecc=0.081819
+gamma45=9.80
+nr=91L
+yeq=findgen(nr)
+latcircle=fltarr(nr)
+hem_frac=fltarr(nr)
+for j=0,nr-1 do begin
+    hy=re*dtr
+    dx=re*cos(yeq(j)*dtr)*360.*dtr
+    latcircle(j)=dx*hy
+endfor
+;
+; need latcircle fully initialized
+;
+for j=0,nr-1 do begin
+    index=where(yeq ge yeq(j))
+    if index(0) ne -1 then hem_frac(j)=total(latcircle(index))/hem_area
+    if yeq(j) eq 0. then hem_frac(j)=1.
+endfor
+
+; --- Loop here --------
+jump: iday = iday + 1
+      kdate,float(iday),iyr,imn,idy
+      ckday,iday,iyr
+
+; --- Test for end condition and close windows.
+      z = stddat(imn,idy,iyr,ndays)
+      if ndays lt lstday then stop,' starting day outside range '
+      if ndays gt ledday then goto,plotit
+;
+; calculate day of year
+;
+      z = kgmt(imn,idy,iyr,jday)
+;
+; read MERRA-2 data on iday
+;
+      newday=0L
+      sdate=string(FORMAT='(i4,i2.2,i2.2)',iyr,imn,idy)
+      ifile=diru+sdate+'00.nc3'				; 00Z
+      print,ifile
+      dum=findfile(ifile)
+      if dum(0) ne '' then begin
+         rd_merra2_nc3,ifile,ncw,nrw,nthw,alon,alat,th,pvgrd,pgrd,$
+                       ugrd,vgrd,qdfgrd,markgrd,qvgrd,ggrd,sfgrd,qgrd,o3grd,iflag
+         if iflag ne 0L then goto,jump
+;
+; eliminate top layers that are discontinuous
+;
+         index=where(th le 3600.,nthw)
+         if index(0) ne -1L then begin
+            th=th(index)
+            pvgrd=reform(pvgrd(*,*,index))
+            pgrd=reform(pgrd(*,*,index))
+            ugrd=reform(ugrd(*,*,index))
+            vgrd=reform(vgrd(*,*,index))
+            qdfgrd=reform(qdfgrd(*,*,index))
+            markgrd=reform(markgrd(*,*,index))
+            qvgrd=reform(qvgrd(*,*,index))
+            ggrd=reform(ggrd(*,*,index))
+            sfgrd=reform(sfgrd(*,*,index))
+            qgrd=reform(qgrd(*,*,index))
+            o3grd=reform(o3grd(*,*,index))
+         endif
+;
+; wind speed
+;
+         spgrd=sqrt(ugrd^2 + vgrd^2)
+;
+; read marker that includes circumpolar highs - SKIP THIS - FOCUS IS ON WINTER - WHY DOES NC4 MARKER MAX=2?
+;
+;        ncid=ncdf_open(diru+sdate+'00.nc4')
+;        mark2new=fltarr(nrw,ncw,nthw)
+;        ncdf_varget,ncid,3,mark2new
+;        ncdf_close,ncid
+;        markgrd=mark2new
+;
+; normalize marker field
+;
+;        index=where(markgrd lt -1.)
+;        if index(0) ne -1L then markgrd(index)=-1.0*markgrd(index)/markgrd(index)	; anticyclones= -1
+;
+; remove anticyclones - SKIP PW ANALYSIS FOR NOW ONLY FOCUS ON DISTANCE FROM VORTEX EDGE
+;
+         index=where(markgrd le 0.)
+         if index(0) ne -1L then markgrd(index)=0.
+;        markgrd=smooth(markgrd,3,/edge_truncate)		; create edge space? - don't want to smooth in the vertical
+;        index=where(abs(markgrd) lt 0.1)
+;        if index(0) ne -1L then markgrd(index)=0.		; remove very small values generated by smoothing
+;
+; on the first day declare profile arrays
+;
+         if kcount eq 0L then begin
+            dates=lonarr(kday)
+            zonal_wind_profiles=fltarr(kday,nthw)
+            meridional_wind_profiles=fltarr(kday,nthw)
+            vortex_marker_profiles=fltarr(kday,nthw)
+            vortex_distance_profiles=fltarr(kday,nthw)	; km McMurdo is from the Antarctic vortex edge. Negative if station is inside the vortex, positive if station is outside the vortex
+            vortex_edge_wind_profiles=(0./0.)*fltarr(kday,nthw)	; mean wind speed at the edge of the polar vortex (not at McMurdo)
+            pressure_profiles=fltarr(kday,nthw)
+            temperature_profiles=fltarr(kday,nthw)
+            altitude_profiles=fltarr(kday,nthw)
+;
+; 2d lat and lon arrays
+;
+            x2d=fltarr(nrw,ncw)
+            y2d=fltarr(nrw,ncw)
+            for i=0L,ncw-1L do y2d(*,i)=alat
+            for j=0L,nrw-1L do x2d(j,*)=alon
+
+            kcount=1
+         endif				; if first day
+      endif				; if data today
+      dates(icount)=long(sdate)
+;
+; calculate geopotential height of isentropic surface = (msf - cp*T)/g
+; where T = theta* (p/po)^R/cp and divide by 1000 for km
+;
+      tgrd=0.*pgrd
+      zgrd=0.*pgrd
+      for k=0L,nthw-1L do begin
+          tgrd(0:nrw-1,0:ncw-1,k)=th(k)*( (pgrd(0:nrw-1,0:ncw-1,k)/1000.)^(.286) )
+bad=where(pgrd eq 0.)
+tgrd(bad)=0.
+;
+; convert geopotential height to geometric height
+;
+          for j=0L,nrw-1L do begin
+              sin2=sin( (alat(j)*dtr)^2.0 )
+              numerator=1.0+ks*sin2
+              denominator=sqrt( 1.0 - (ecc^2.0)*sin2 )
+              gammas=gamma45*(numerator/denominator)
+              r=6378.137/(1.006803-(0.006706*sin2))
+              zgrd(j,*,k)=(r*ggrd(j,*,k))/ ( (gammas/gamma45)*r - ggrd(j,*,k) )
+
+          endfor			; loop over latitude
+      endfor				; loop over altitude
+;
+; interpolate MERRA-2 to point location
+;
+      if slon lt alon(0) then slon=slon+360.
+      for i=0L,ncw-1L do begin
+          ip1=i+1
+          if i eq ncw-1L then ip1=0L
+          xlon=alon(i)
+          xlonp1=alon(ip1)
+          if i eq ncw-1L then xlonp1=360.+alon(ip1)
+          if slon ge xlon and slon le xlonp1 then begin
+             xscale=(slon-xlon)/(xlonp1-xlon)
+             goto,jumpx
+          endif
+      endfor
+jumpx:
+      for j=0L,nrw-2L do begin
+          jp1=j+1
+          xlat=alat(j)
+          xlatp1=alat(jp1)
+          if slat ge xlat and slat le xlatp1 then begin
+              yscale=(slat-xlat)/(xlatp1-xlat)
+              goto,jumpy
+          endif
+      endfor
+jumpy:					; i and ip1, j and jp1 are bounding longitude and latitude indices
+;
+; interpolate gridded data to profile lon/lat
+; if none of the points is "out of bounds"
+;
+      pj1=ugrd(j,i,*)+xscale*(ugrd(j,ip1,*)-ugrd(j,i,*))
+      pjp1=ugrd(jp1,i,*)+xscale*(ugrd(jp1,ip1,*)-ugrd(jp1,i,*))
+      zonal_wind_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+
+      pj1=vgrd(j,i,*)+xscale*(vgrd(j,ip1,*)-vgrd(j,i,*))
+      pjp1=vgrd(jp1,i,*)+xscale*(vgrd(jp1,ip1,*)-vgrd(jp1,i,*))
+      meridional_wind_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+
+      pj1=markgrd(j,i,*)+xscale*(markgrd(j,ip1,*)-markgrd(j,i,*))
+      pjp1=markgrd(jp1,i,*)+xscale*(markgrd(jp1,ip1,*)-markgrd(jp1,i,*))
+      vortex_marker_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+      
+      pj1=pgrd(j,i,*)+xscale*(pgrd(j,ip1,*)-pgrd(j,i,*))
+      pjp1=pgrd(jp1,i,*)+xscale*(pgrd(jp1,ip1,*)-pgrd(jp1,i,*))
+      pressure_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+      
+      pj1=tgrd(j,i,*)+xscale*(tgrd(j,ip1,*)-tgrd(j,i,*))
+      pjp1=tgrd(jp1,i,*)+xscale*(tgrd(jp1,ip1,*)-tgrd(jp1,i,*))
+      temperature_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+      
+      pj1=zgrd(j,i,*)+xscale*(zgrd(j,ip1,*)-zgrd(j,i,*))
+      pjp1=zgrd(jp1,i,*)+xscale*(zgrd(jp1,ip1,*)-zgrd(jp1,i,*))
+      altitude_profiles(icount,*)=reform(pj1+yscale*(pjp1-pj1))
+;
+; loop over altitudes - to accommodate looking across the pole, find closest distance from all vortex points
+;
+for k=0L,nthw-1L do begin
+    sp2d=reform(spgrd(*,*,k))
+    mark2d=reform(markgrd(*,*,k))
+    vindex=where(y2d lt 0. and mark2d gt 0.)	; Antarctic vortex points at this altitude?
+    if vindex(0) eq -1L then goto,skiplev
+    oindex=where(y2d lt 0. and mark2d eq 0.)	; outside points
+
+;erase
+;MAP_SET,-90,0,-90,/stereo,/grid,/contin,/noeras,/noborder,color=0,title=strcompress(th(k))
+;contour,transpose(mark2d),alon,alat,thick=5,color=50,/overplot,levels=0.1+0.1*findgen(10),/follow
+;oplot,x2d(vindex),y2d(vindex),psym=2,color=0
+;oplot,x2d(oindex),y2d(oindex),psym=2,color=150
+;oplot,[slon,slon],[slat,slat],psym=4,color=250,symsize=4
+;
+; if profile is outside the vortex, how far to get inside?
+;
+    hlon=x2d(vindex)
+    hlat=y2d(vindex)
+    xh=slon & yh=slat
+    dxf=re*abs(xh-hlon)*dtr*cos(yh*dtr)
+    dyf=re*abs(yh-hlat)*dtr
+    dist=sqrt(dxf*dxf+dyf*dyf)
+    if vortex_marker_profiles(icount,k) le 0. then vortex_distance_profiles(icount,k)=min(dist)
+;
+; if profile is inside the vortex, how far to get outside?
+;
+    if vortex_marker_profiles(icount,k) gt 0. then begin
+       hlon=x2d(oindex)
+       hlat=y2d(oindex)
+       xh=slon & yh=slat
+       dxf=re*abs(xh-hlon)*dtr*cos(yh*dtr)
+       dyf=re*abs(yh-hlat)*dtr
+       dist=sqrt(dxf*dxf+dyf*dyf)
+       vortex_distance_profiles(icount,k)=-1.0*min(dist)
+    endif
+;
+; average wind speed at the vortex edge
+;
+    mark2dsm=smooth(mark2d,3,/edge_truncate)
+    index=where(y2d lt 0. and mark2dsm gt 0. and mark2dsm lt 1.)
+    if index(0) ne -1L then vortex_edge_wind_profiles(icount,k)=mean(sp2d(index))
+
+;erase
+;MAP_SET,-90,0,0,/stereo,/noeras,/grid,/contin,/noborder,title=sdate+' '+strcompress(th(k))+' K',color=0
+;contour,transpose(mark2dsm),alon,alat,levels=0.1+0.1*findgen(10),thick=3,/noeras,/overplot
+;contour,transpose(sp2d),alon,alat,levels=10+10*findgen(15),thick=2,c_color=15.+(255./15.)*findgen(15),/overplot
+;oplot,x2d(index),y2d(index),psym=8,color=70
+;oplot,[slon,slon],[slat,slat],color=250,psym=8,symsize=5
+;wait,1
+;print,th(k),vortex_marker_profiles(icount,k),vortex_distance_profiles(icount,k)
+;print,th(k),vortex_edge_wind_profiles(icount,k)
+
+skiplev:
+endfor
+;stop
+
+icount=icount+1L
+goto,jump
+
+plotit:
+datelab=strcompress(dates(0),/r)+'-'+strcompress(dates(-1),/r)
+;
+; plot for posterity
+;
+if setplot eq 'ps' then begin
+   xsize=nxdim/100.
+   ysize=nydim/100.
+   set_plot,'ps'
+   device,/landscape,/inch,xoff=4.25-ysize/2.,yoff=5.5+xsize/2.,xsize=xsize,ysize=ysize,$
+          /bold,/color,bits_per_pixel=8,/helvetica,filename=pthout+'merra2mcmurdo_'+datelab+'.ps'
+   !p.charsize=1.25
+   !p.thick=2
+   !p.charthick=5
+   !p.charthick=5
+   !y.thick=2
+   !x.thick=2
+endif
+
+index=where(temperature_profiles le 100.)
+if index(0) ne -1L then begin
+   temperature_profiles(index)=0./0.
+   zonal_wind_profiles(index)=0./0.
+   meridional_wind_profiles(index)=0./0.
+   vortex_marker_profiles(index)=0./0.
+;  vortex_distance_profiles(index)=0./0.
+   vortex_edge_wind_profiles(index)=0./0.
+   pressure_profiles(index)=0./0.
+   altitude_profiles(index)=0./0.
+endif
+;index=where(vortex_distance_profiles eq 0.)
+;if index(0) ne -1L then vortex_distance_profiles(index)=0./0.
+;
+; interpolate to altitude levels 20-65 km every 1 km
+;
+nz=46
+altitude=20+findgen(nz)
+zonal_wind_profiles_z=fltarr(kday,nz)
+meridional_wind_profiles_z=fltarr(kday,nz)
+vortex_marker_profiles_z=fltarr(kday,nz)
+vortex_distance_profiles_z=fltarr(kday,nz)
+vortex_edge_wind_profiles_z=fltarr(kday,nz)
+pressure_profiles_z=fltarr(kday,nz)
+temperature_profiles_z=fltarr(kday,nz)
+altitude_profiles_z=fltarr(kday,nz)
+
+erase
+!type=2^2+2^3
+set_viewport,.1,.9,.1,.9
+for i=0,kday-1L do begin
+    zonal_wind_profiles_z(i,*) =interpol(reform(zonal_wind_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    meridional_wind_profiles_z(i,*) =interpol(reform(meridional_wind_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    vortex_marker_profiles_z(i,*) =interpol(reform(vortex_marker_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    vortex_distance_profiles_z(i,*) =interpol(reform(vortex_distance_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    vortex_edge_wind_profiles_z(i,*) =interpol(reform(vortex_edge_wind_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    pressure_profiles_z(i,*) =interpol(reform(pressure_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+    temperature_profiles_z(i,*) =interpol(reform(temperature_profiles(i,*)),reform(altitude_profiles(i,*)),altitude,/Nan)
+;if i eq 0 then plot,reform(vortex_distance_profiles(i,*)),reform(altitude_profiles(i,*)),psym=-4,thick=3,color=0,xrange=[-5000,5000]
+;oplot,reform(vortex_distance_profiles(i,*)),reform(altitude_profiles(i,*)),psym=-4,thick=3,color=0
+;oplot,reform(vortex_distance_profiles_z(i,*)),altitude,psym=2,symsize=2,color=250
+endfor
+index=where(vortex_distance_profiles_z eq 0.)
+if index(0) ne -1L then vortex_distance_profiles_z(index)=0./0.
+index=where(vortex_edge_wind_profiles_z lt 0.)
+if index(0) ne -1L then vortex_edge_wind_profiles_z(index)=0./0.
+
+erase
+!type=2^2+2^3
+xmn=xorig(0)
+xmx=xorig(0)+xlen
+ymn=yorig(0)
+ymx=yorig(0)+ylen
+set_viewport,xmn,xmx,ymn,ymx
+index=where(finite(temperature_profiles_z))
+tmax=max(temperature_profiles_z(index))+5.
+tmin=min(temperature_profiles_z(index))-5.
+nlvls=20
+level=tmin+((tmax-tmin)/float(nlvls))*findgen(nlvls+1)
+nlvls=nlvls+1
+col1=1+indgen(nlvls)*icolmax/float(nlvls)
+contour,temperature_profiles_z,findgen(kday),altitude,levels=level,c_color=col1,/cell_fill,/noeras,title='T at McMurdo '+sloc,xrange=[0.,kday-1],color=0,yrange=[20,65]
+;contour,temperature_profiles_z,findgen(kday),altitude,/overplot,levels=level,/follow,c_labels=0*level,/noeras,color=0
+;contour,vortex_marker_profiles_z,findgen(kday),altitude,/overplot,levels=[0.1],thick=5,color=0
+imin=min(level)
+imax=max(level)
+ymnb=ymn -cbaryoff
+ymxb=ymnb+cbarydel
+set_viewport,xmn,xmx,ymnb,ymxb
+!type=2^2+2^3+2^6
+plot,[imin,imax],[0,0],yrange=[0,10],xrange=[imin,imax],/noeras,color=0,xtitle='Temperature (K)'
+ybox=[0,10,10,0,0]
+x2=imin
+dx=(imax-imin)/(float(nlvls)-1)
+for j=1,nlvls-1 do begin
+    xbox=[x2,x2,x2+dx,x2+dx,x2]
+    polyfill,xbox,ybox,color=col1(j)
+    x2=x2+dx
+endfor
+
+!type=2^2+2^3
+xmn=xorig(1)
+xmx=xorig(1)+xlen
+ymn=yorig(1)
+ymx=yorig(1)+ylen
+set_viewport,xmn,xmx,ymn,ymx
+tmax=100.	;max(zonal_wind_profiles_z)+5.
+tmin=-100.	;min(zonal_wind_profiles_z)-5.
+nlvls=20
+level=tmin+((tmax-tmin)/float(nlvls))*findgen(nlvls+1)
+nlvls=nlvls+1
+col1=1+indgen(nlvls)*icolmax/float(nlvls)
+zonal_wind_profiles_z=smooth(zonal_wind_profiles_z,3,/edge_truncate,/Nan)
+contour,zonal_wind_profiles_z,findgen(kday),altitude,levels=level,c_color=col1,/cell_fill,/noeras,title='U at McMurdo '+sloc,xrange=[0.,kday-1],color=0,yrange=[20,65]
+index=where(level gt 0.)
+contour,zonal_wind_profiles_z,findgen(kday),altitude,/overplot,levels=level(index),/follow,c_labels=0*level(index),/noeras,color=0
+index=where(level lt 0.)
+contour,zonal_wind_profiles_z,findgen(kday),altitude,/overplot,levels=level(index),/follow,c_labels=0*level(index),/noeras,color=mcolor,c_linestyle=5
+;contour,vortex_marker_profiles_z,findgen(kday),altitude,/overplot,levels=[0.1],thick=5,color=0
+;index=where(vortex_marker_profiles_z gt 0.)
+contour,vortex_distance_profiles_z,findgen(kday),altitude,/overplot,levels=[0],/follow,/noeras,color=0,thick=5
+
+imin=min(level)
+imax=max(level)
+ymnb=ymn -cbaryoff
+ymxb=ymnb+cbarydel
+set_viewport,xmn,xmx,ymnb,ymxb
+!type=2^2+2^3+2^6
+plot,[imin,imax],[0,0],yrange=[0,10],xrange=[imin,imax],/noeras,color=0,xtitle='Zonal Wind (m/s)'
+ybox=[0,10,10,0,0]
+x2=imin
+dx=(imax-imin)/(float(nlvls)-1)
+for j=1,nlvls-1 do begin
+    xbox=[x2,x2,x2+dx,x2+dx,x2]
+    polyfill,xbox,ybox,color=col1(j)
+    x2=x2+dx
+endfor
+
+!type=2^2+2^3
+xmn=xorig(2)
+xmx=xorig(2)+xlen
+ymn=yorig(2)
+ymx=yorig(2)+ylen
+set_viewport,xmn,xmx,ymn,ymx
+nlvls=29
+;level=tmin+((tmax-tmin)/float(nlvls))*findgen(nlvls+1)
+;level=-5000.+250.*findgen(nlvls)
+level=5+5*findgen(nlvls)
+col1=1+indgen(nlvls)*icolmax/float(nlvls)
+contour,vortex_edge_wind_profiles_z,findgen(kday),altitude,levels=level,c_color=col1,/cell_fill,/noeras,title='Mean Vortex Edge Wind Speed',xrange=[0.,kday-1],color=0,yrange=[20,65]
+contour,vortex_edge_wind_profiles_z,findgen(kday),altitude,/overplot,levels=level,/follow,c_labels=0*level,/noeras,color=0
+imin=min(level)
+imax=max(level)
+ymnb=ymn -cbaryoff
+ymxb=ymnb+cbarydel
+set_viewport,xmn,xmx,ymnb,ymxb
+!type=2^2+2^3+2^6
+plot,[imin,imax],[0,0],yrange=[0,10],xrange=[imin,imax],/noeras,color=0,xtitle='Mean Edge Wind Speed (m/s)
+ybox=[0,10,10,0,0]
+x2=imin
+dx=(imax-imin)/(float(nlvls)-1)
+for j=1,nlvls-1 do begin
+    xbox=[x2,x2,x2+dx,x2+dx,x2]
+    polyfill,xbox,ybox,color=col1(j)
+    x2=x2+dx
+endfor
+
+if setplot eq 'ps' then begin
+   device, /close
+   spawn,'convert -trim '+pthout+'merra2mcmurdo_'+datelab+'.ps -rotate -90 '+pthout+'merra2mcmurdo_'+datelab+'.jpg'
+   spawn,'/usr/bin/rm '+pthout+'merra2mcmurdo_'+datelab+'.ps'
+endif
+;
+; save all profiles
+;
+longitude=slon
+latitude=slat
+date=long(sdate)
+comment=strarr(12)
+comment(0)='Profiles based on MERRA-2 0Z data'
+comment(1)='dates in YYYYMMDD'
+comment(2)='longitude in degrees east'
+comment(3)='latitude in degrees'
+comment(4)='altitude = Geometric altitude profile (km)'
+comment(5)='vortex_marker_profiles = positive values in vortex'
+comment(6)='pressure_profiles = Pressure profiles (hPa)'
+comment(7)='temperature_profiles = Temperature profiles (K)'
+comment(8)='zonal_wind_profiles = Zonal Wind profiles (km)'
+comment(9)='meridional_wind_profiles = Meridional Wind profiles (km)'
+comment(10)='vortex_distance_profiles = km distance McMurdo Station is from the Antarctic vortex edge (negative if station is inside vortex, positive if station is outside vortex, /Nan if no vortex is present)'
+comment(11)='vortex_edge_wind_profiles = mean wind speed at the edge of the polar vortex (not at McMurdo)'
+
+save,file=pthout+'merra2_at_mcmurdo_'+datelab+'.sav',kday,nz,dates,time,longitude,latitude,altitude,$
+     vortex_marker_profiles_z,pressure_profiles_z,temperature_profiles_z,$
+     zonal_wind_profiles_z,meridional_wind_profiles_z,vortex_distance_profiles_z,vortex_edge_wind_profiles_z,comment
+print,'saved DMP '+sdate
+;
+;open NetCDF file for writing
+;
+ncid = ncdf_create(pthout+'merra2_at_mcmurdo_'+datelab+'.nc',/clobber)
+ncdf_attput, ncid, 'Description', 'MERRA-2 profiles of T, U, V, P, Vortex Marker, Distance from Vortex Edge at McMurdo Station (-77.85, 166.67). Daily at 0Z interpolated to 1 km altitude levels from 20-65 km.', /global
+ncdf_attput, ncid, 'Author', 'V. Lynn Harvey, file was created using interp_merra22point_theta_mcmurdo.pro', /global
+ncdf_attput, ncid, 'nz', 'Number of Altitude Levels', /global
+ncdf_attput, ncid, 'kday', 'Number of Days', /global
+
+tid = ncdf_dimdef(ncid, 'kday', kday)
+zid = ncdf_dimdef(ncid, 'nz', nz)
+
+vid = ncdf_vardef(ncid, 'DATES'        , tid      , /LONG)
+vid = ncdf_vardef(ncid, 'ALTITUDE'     ,      zid , /FLOAT)
+vid = ncdf_vardef(ncid, 'U'            , [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'V'            , [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'P'            , [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'T'            , [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'MARK'         , [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'EDGE_DISTANCE', [tid,zid], /FLOAT)
+vid = ncdf_vardef(ncid, 'VORTEX_EDGE_WIND', [tid,zid], /FLOAT)
+
+ncdf_attput, ncid, 'V', 'long_name', 'MERIDIONAL WIND' & ncdf_attput, ncid,'V', 'units', 'M/S'
+ncdf_attput, ncid, 'U', 'long_name', 'ZONAL WIND' & ncdf_attput, ncid, 'U', 'units', 'M/S'
+ncdf_attput, ncid, 'P', 'long_name', 'PRESSURE' & ncdf_attput, ncid, 'P', 'units', 'HPA'
+ncdf_attput, ncid, 'T', 'long_name', 'TEMPERATURE' & ncdf_attput, ncid, 'T', 'units', 'K'
+ncdf_attput, ncid, 'MARK', 'long_name', 'VORTEX MARKER' & ncdf_attput, ncid, 'MARK', 'units', 'dimensionless'
+ncdf_attput, ncid, 'EDGE_DISTANCE', 'long_name', 'EDGE DISTANCE' & ncdf_attput, ncid, 'EDGE_DISTANCE', 'units', 'KM'
+ncdf_attput, ncid, 'VORTEX_EDGE_WIND', 'long_name', 'MEAN VORTEX EDGE WIND SPEED' & ncdf_attput, ncid, 'VORTEX_EDGE_WIND', 'units', 'M/S'
+
+ncdf_control, ncid, /endef
+;
+; write NetCDF file
+;
+ncdf_varput, ncid, 'DATES', DATES  , COUNT=[kday]
+ncdf_varput, ncid, 'ALTITUDE', ALTITUDE, COUNT=[nz]
+ncdf_varput, ncid, 'U', zonal_wind_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'V', meridional_wind_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'P', pressure_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'T', temperature_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'MARK', vortex_marker_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'EDGE_DISTANCE', vortex_distance_profiles_z, COUNT=[kday,nz]
+ncdf_varput, ncid, 'VORTEX_EDGE_WIND', vortex_edge_wind_profiles_z, COUNT=[kday,nz]
+
+ncdf_close, ncid
+
+end

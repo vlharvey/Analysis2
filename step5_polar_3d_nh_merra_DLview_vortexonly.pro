@@ -7,7 +7,7 @@
 @kdate
 @rd_merra_nc3
 
-loadct,39
+loadct,38
 mcolor=byte(!p.color)
 icolmax=byte(!p.color)
 icolmax=fix(icolmax)
@@ -20,21 +20,18 @@ cbaryoff=0.065
 cbarydel=0.02
 lstmn=1
 lstdy=1
-lstyr=2004
-ledmn=4
-leddy=1
-ledyr=2004
+lstyr=1979
+ledmn=3
+leddy=31
+ledyr=2014
 lstday=0
 ledday=0
 set_plot,'ps'
 setplot='ps'
-;read,'setplot= ',setplot
+read,'setplot= ',setplot
 ;
 ; Ask interactive questions- get starting/ending date and p surface
 ;
-print, ' '
-print, '      MERRA Version '
-print, ' '
 read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
 read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
 z = stddat(lstmn,lstdy,lstyr,lstday)
@@ -113,7 +110,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
        !psym=0
        !p.font=0
        device,font_size=9
-       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D.ps'
+       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D_vortex.ps'
        device,/color
        device,/inch,xoff=4.25-ysize/2.,yoff=5.5+xsize/2.,$
               xsize=xsize,ysize=ysize
@@ -223,7 +220,7 @@ print,th(lev),min(temp1),max(temp1)
         sflevel=smin+sint*findgen(15)
         contour,dum,xcn,ycn,levels=sflevel,color=0,c_labels=0+0.*sflevel,$
                 /T3D,zvalue=nz,thick=1
-        loadct,39
+        loadct,38
         endif
  
         nz2=(kk+1.)*(1./(nth2+1.))
@@ -276,7 +273,7 @@ print,th(lev),min(temp1),max(temp1)
 ;
 ; anticyclones
 ;
-        lindex=where(dum lt 0.0,nl)
+        lindex=where(dum lt -10000.0,nl)
         if lindex(0) ne -1 then begin
 ;          oplot,xcn(lindex),ycn(lindex),/T3D,zvalue=nz,psym=8,symsize=2,color=0
 loadct,0
@@ -310,13 +307,13 @@ dx=x2d(1,0)-x2d(0,0)
                if index(0) ne -1 then tmp(index)=-9999.
 ;              index=where(tmp ne -9999. and y2d gt 13.7500 and dum eq -1.0*(ihigh+1))
                index=where(tmp ne -9999. and y2d gt 0. and dum eq -1.0*(ihigh+1))
-               oplot,xcn(index),ycn(index),psym=8,color=0,/T3D,zvalue=nz,symsize=1	;0.5
+               oplot,xcn(index),ycn(index),psym=8,color=0,/T3D,zvalue=nz,symsize=0.5
                contour,tmp,xcn,ycn,levels=[sedge],color=icolmax*.7,$
                  /T3D,zvalue=nz,c_linestyle=0,/overplot,min_value=-9999.,thick=3
                jump1:
            endfor               ; loop over anticyclones
 
-loadct,39
+loadct,38
         endif
 jumplev:
         xyouts,.83,nz4,savgz,color=0,/normal,charsize=2,charthick=2
@@ -346,7 +343,7 @@ jumplev:
     if setplot ne 'ps' then stop
     if setplot eq 'ps' then begin
        device,/close
-       spawn,'convert -trim Arctic_3D/'+ifile+'_3D.ps -rotate -90 Arctic_3D/'+ifile+'_3D.jpg'
+       spawn,'convert -trim Arctic_3D/'+ifile+'_3D_vortex.ps -rotate -90 Arctic_3D/'+ifile+'_3D_vortex.jpg'
        spawn,'rm -f Arctic_3D/'+ifile+'_3D.ps'
     endif
 

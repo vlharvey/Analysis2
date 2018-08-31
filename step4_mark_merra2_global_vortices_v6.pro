@@ -11,9 +11,9 @@
 @relvort
 @marker_lows_v7
 @marker_highs_v6
-@write_merra_nc3
+@write_merra2_nc3
 
-;loadct,38
+;loadct,39
 ;mcolor=byte(!p.color)
 ;device,decompose=0
 ;a=findgen(8)*(2*!pi/8.)
@@ -26,8 +26,10 @@
 ;ylen=0.5
 mon=['jan_','feb_','mar_','apr_','may_','jun_',$
      'jul_','aug_','sep_','oct_','nov_','dec_']
-dirw='/Volumes/Data/MERRA_data/Datfiles/'
-ifiles=file_search(dirw+'MERRA-on-WACCM_theta_*.nc2',count=nfile)
+dirw='/atmos/harvey/MERRA2_data/Datfiles/'
+ifiles=file_search(dirw+'MERRA2-on-WACCM_theta_2018????*.nc2',count=nfile)
+print,'starting'
+spawn,'date'
 ;
 ; loop over files
 ;
@@ -35,18 +37,18 @@ FOR n=0l,nfile-1l DO BEGIN
     result=strsplit(ifiles(n),'_',/extract)
     result2=strsplit(result(3),'.',/extract)
     sdate=result2(0)
-    print,sdate
+;   print,sdate
 ;
 ; skip if nc3 file already exists
 ;
-    dum=findfile(dirw+'MERRA-on-WACCM_theta_'+sdate+'.nc3')
+    dum=findfile(dirw+'MERRA2-on-WACCM_theta_'+sdate+'.nc3')
     if dum(0) ne '' then goto,jumpfile
 ;
 ;***Read data
 ;
-      ifile=dirw+'MERRA-on-WACCM_theta_'+sdate+'.nc2'
+      ifile=dirw+'MERRA2-on-WACCM_theta_'+sdate+'.nc2'
       print,'reading ',ifile
-      rd_merra_nc2,ifile,nc,nr,nth,xlon,xlat,th,pv2,p2,u2,v2,qdf2,qv2,z2,sf2,q2,iflg
+      rd_merra2_nc2,ifile,nc,nr,nth,xlon,xlat,th,pv2,p2,u2,v2,qdf2,qv2,z2,sf2,q2,o32,iflg
       if iflg ne 0L then goto,jumpfile
       x=fltarr(nc+1)
       x(0:nc-1)=xlon(0:nc-1)
@@ -148,10 +150,9 @@ FOR n=0l,nfile-1l DO BEGIN
 ;index=where(zeta lt 0.)
 ;if index(0) ne -1 then oplot,x2d(index),y2d(index),psym=4,color=mcolor*.3,symsize=0.5
 ;index=where(markl gt 0.)
-;if index(0) ne -1 then oplot,x2d(index),y2d(index),psym=4,color=.1*mcolor
+;if index(0) ne -1 then oplot,x2d(index),y2d(index),psym=2,color=.1*mcolor
 ;index=where(markh lt 0.)
-;if index(0) ne -1 then oplot,x2d(index),y2d(index),psym=4,color=.5*mcolor
-;stop
+;if index(0) ne -1 then oplot,x2d(index),y2d(index),psym=2,color=.9*mcolor
           markl1=0.*qdf1
           markl1(0:nc-1,0:nr-1)=markl(0:nc-1,0:nr-1)
           mark2(*,*,thlev)=transpose(markl1)
@@ -162,10 +163,12 @@ FOR n=0l,nfile-1l DO BEGIN
       ENDFOR	; loop over theta
 
 ; Write isentropic data in netCDF format
-      ofile=dirw+'MERRA-on-WACCM_theta_'+sdate+'.nc3'
+      ofile=dirw+'MERRA2-on-WACCM_theta_'+sdate+'.nc3'
       print,'writing ',ofile
-      write_merra_nc3,ofile,nc,nr,nth,xlon,xlat,th,pv2,p2,u2,v2,qdf2,mark2,qv2,z2,sf2,q2
+      write_merra2_nc3,ofile,nc,nr,nth,xlon,xlat,th,pv2,p2,u2,v2,qdf2,mark2,qv2,z2,sf2,q2,o32
 
 jumpfile:
 endfor
+print,'ending'
+spawn,'date'
 end

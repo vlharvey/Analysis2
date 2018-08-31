@@ -19,24 +19,24 @@ nydim=800
 cbaryoff=0.065
 cbarydel=0.02
 lstmn=1
-lstdy=1
-lstyr=2004
-ledmn=4
-leddy=1
-ledyr=2004
+lstdy=16
+lstyr=2014
+ledmn=1
+leddy=16
+ledyr=2014
 lstday=0
 ledday=0
 set_plot,'ps'
 setplot='ps'
-;read,'setplot= ',setplot
+read,'setplot= ',setplot
 ;
 ; Ask interactive questions- get starting/ending date and p surface
 ;
 print, ' '
 print, '      MERRA Version '
 print, ' '
-read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
-read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
+;read,' Enter starting date (month, day, year) ',lstmn,lstdy,lstyr
+;read,' Enter ending date   (month, day, year) ',ledmn,leddy,ledyr
 z = stddat(lstmn,lstdy,lstyr,lstday)
 z = stddat(ledmn,leddy,ledyr,ledday)
 if ledday lt lstday then stop,' Wrong dates! '
@@ -113,7 +113,7 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
        !psym=0
        !p.font=0
        device,font_size=9
-       device,/landscape,bits=8,filename='Arctic_3D/'+ifile+'_3D.ps'
+       device,/landscape,bits=8,filename=ifile+'_3D_utah.ps'
        device,/color
        device,/inch,xoff=4.25-ysize/2.,yoff=5.5+xsize/2.,$
               xsize=xsize,ysize=ysize
@@ -152,11 +152,18 @@ for k=0L,nth-1L do tmp2(*,*,k)=th(k)*(p2(*,*,k)/1000.)^0.286
     set_viewport,.1,.9,.1,.9
     !type=2^6+2^5     ; suppress x and y axes
     dum=fltarr(nc+1,nr2)
-    irot=-110.
+    irot=120.
     surface,dum,xcn,ycn,xrange=[-1.0,1.0],yrange=[-1.0,1.0],/noeras,$
             zrange=[thlw,thup],/save,/nodata,zstyle=4,charsize=3.0,az=irot
+    nzz=fltarr(nth2)
+    for kk=0,nth2-1 do nzz(kk)=kk*(1./(nth2-1.)) ; equally spaced in the vertical stretches subvortex
+
     col1=fltarr(nth2)
     for kk=0,nth2-1 do begin
+        km1=kk-1 & kp1=kk+1
+        if kk eq 0 then km1=0
+        if kk eq nth2-1 then kp1=nth2-1
+
         index=where(th eq th2(kk))
         lev=index(0)
         nz=kk*(1./(nth2-1.))
@@ -319,10 +326,29 @@ dx=x2d(1,0)-x2d(0,0)
 loadct,39
         endif
 jumplev:
-        xyouts,.83,nz4,savgz,color=0,/normal,charsize=2,charthick=2
-        xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
+;
+; superimpose profile at Utah State lidar site (41.74N, 111.81W) = 248.19E
+;
+yy=54.1 & xx=248.19
+               ANG = (90. - yy) * RADG * 0.5
+               FACTOR = TAN(ANG) * FAC20
+               THETA0 = (xx - 90.) * RADG
+               xn = FACTOR * COS(THETA0)
+               yn = FACTOR * SIN(THETA0)
+               a=findgen(8)*(2*!pi/8.)
+               usersym,2*cos(a),2*sin(a),/fill
+               oplot,[xn,xn],[yn,yn],zvalue=nzz(kk),/T3D,psym=8,color=mcolor*.95
+               dist=nzz(kp1)-nzz(kk)
+               if dist gt 0. then begin
+               for m=0,10 do $
+                   oplot,[xn,xn],[yn,yn],zvalue=nzz(kk)+float(m)*dist/11.,/T3D,psym=8,color=mcolor*.9
+               endif
+
+        if kk mod 2 eq 0 then xyouts,.83,nz4,savgz,color=0,/normal,charsize=2,charthick=2
+        if kk mod 2 eq 0 then xyouts,.08,nz4,thlevs(kk),color=0,/normal,charsize=2,charthick=2
     endfor	; loop over stacked polar plots
     !psym=0
+    xyouts,.675,.1,'Utah State (41.74N,111.81W)',charsize=1.5,/normal,color=mcolor*.9,charthick=2
     xyouts,0.35,0.88,'MERRA '+date,/normal,charsize=3.0,color=0,charthick=2
     xyouts,.08,.85,'Theta (K)',charsize=2,/normal,color=0,charthick=2
     xyouts,.78,.85,'Pressure (hPa)',charsize=2,/normal,color=0,charthick=2
@@ -346,8 +372,8 @@ jumplev:
     if setplot ne 'ps' then stop
     if setplot eq 'ps' then begin
        device,/close
-       spawn,'convert -trim Arctic_3D/'+ifile+'_3D.ps -rotate -90 Arctic_3D/'+ifile+'_3D.jpg'
-       spawn,'rm -f Arctic_3D/'+ifile+'_3D.ps'
+       spawn,'convert -trim '+ifile+'_3D_utah.ps -rotate -90 '+ifile+'_3D_utah.jpg'
+       spawn,'rm -f '+ifile+'_3D_utah.ps'
     endif
 
     endfor

@@ -1,5 +1,5 @@
-pro write_merra_nc3,ofile,nlg,nlat,nth,alon,alat,thlev,$
-          ipv,prs,u,v,qdf,mark,qv,z,sf,q
+pro write_merra2_nc3,ofile,nlg,nlat,nth,alon,alat,thlev,$
+          ipv,prs,u,v,qdf,mark,qv,z,sf,q,o3
 
 ; Create netCDF file and erase existing netCDF file if it exists
 ncid = ncdf_create(ofile,/CLOBBER)
@@ -19,6 +19,7 @@ qvid   = ncdf_vardef(ncid, 'sphum'     , [latdimid,londimid,levdimid])
 zid    = ncdf_vardef(ncid, 'gph'       , [latdimid,londimid,levdimid])
 stfid  = ncdf_vardef(ncid, 'strm'      , [latdimid,londimid,levdimid])
 qid    = ncdf_vardef(ncid, 'q'         , [latdimid,londimid,levdimid])
+o3id   = ncdf_vardef(ncid, 'o3'         , [latdimid,londimid,levdimid])
 
 ncdf_control,ncid,/ENDEF
 ncdf_varput, ncid, lonsid, alon , COUNT=[nlg]
@@ -34,6 +35,7 @@ ncdf_varput, ncid, qvid  , qv   , COUNT=[nlat,nlg,nth]
 ncdf_varput, ncid, zid   , z    , COUNT=[nlat,nlg,nth]
 ncdf_varput, ncid, stfid , sf   , COUNT=[nlat,nlg,nth]
 ncdf_varput, ncid, qid   , q    , COUNT=[nlat,nlg,nth]
+ncdf_varput, ncid, o3id  , o3   , COUNT=[nlat,nlg,nth]
 ncdf_close,ncid
 return
 end

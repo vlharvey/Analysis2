@@ -1,4 +1,4 @@
-pro marker_highs_v6,dat,mark,qdf,zeta,u,v,x,y
+pro marker_highs_v6,dat,mark,qdf,zeta,u,v,x,y,pv
 
 ; smallest anticyclone spans 4 lats and 4 lons w/12 gridpoints
 ;
@@ -32,6 +32,14 @@ datmax=max(dat(kk))
 datavg=(datmin+datmax)/2.0
 datint=(datmax-datavg)/(nbins-1)
 datbin=datavg+datint*findgen(nbins)
+;
+; if theta surface is discontinuous poleward of 40 degrees latitude
+;
+index=where(pv eq 1.00000e+12)
+if index(0) ne -1L then begin
+;  print,' discontinuous up to ',max(lat(index))
+   if max(lat(index)) gt 40. then goto,dosh
+endif
 
 ; begin with 90 degree longitude sectors (dsect=90.)
 ; loop over sectors.  lonmin of n+1 sector = lonmax of n sector
@@ -160,7 +168,7 @@ WHILE (dloop le 360.*2. and imark eq 0) or $
           if ii gt 1 then goto,jumpnhbin
           if index(0) ne -1 then begin
              for jj=0,it-2 do begin
-                 if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy then begin
+                 if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy*1.1 then begin
                     latmin=sortedlats(jj+1)
                     latmax=sortedlats(it-1)
                     goto,jump4
@@ -358,7 +366,7 @@ latmax=max(lat(s))
           sindex=sort(lat(s))
           sortedlats=lat(s(sindex))
           for jj=0,is-2 do begin
-              if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy then begin
+              if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy*1.1 then begin
                  latmin=sortedlats(jj+1)
                  latmax=sortedlats(is-1)
                  goto,nhjumpout2
@@ -395,7 +403,7 @@ latmax=max(lat(s))
 
 ; if you've made it this far then mark the sucker
           mark(s)=-1.0*(imark+1.0)
-          print,'NH ',imark,'MARKED EDGE ',datbin(n),' BIN # ',n
+;         print,'NH ',imark,'MARKED EDGE ',datbin(n),' BIN # ',n
           imark=imark+1
           goto, jumpnhsect
           jumpnhbin:
@@ -426,6 +434,8 @@ latmax=max(lat(s))
       nmark0=nmark1
 ENDWHILE		; loop over longitude sectors
 
+dosh:
+
 ; Southern Hemisphere
 nmark0=0.
 imark=0
@@ -437,6 +447,14 @@ datmax=max(dat(kk))
 datavg=(datmin+datmax)/2.0
 datint=(datmax-datavg)/(nbins-1)
 datbin=datavg-datint*findgen(nbins)
+;
+; if theta surface is discontinuous poleward of 40 degrees latitude
+;
+index=where(pv eq 1.00000e+12)
+if index(0) ne -1L then begin
+;  print,' discontinuous up to ',min(lat(index))
+   if min(lat(index)) lt -40. then return
+endif
 
 ; begin with 90 degree longitude sectors (dsect=90.)
 ; loop over sectors.  lonmin of n+1 sector = lonmax of n sector
@@ -565,7 +583,7 @@ WHILE (dloop le 360.*2. and imark eq 0) or $
           if ii gt 1 then goto,jumpshbin
           if index(0) ne -1 then begin
              for jj=0,it-2 do begin
-                 if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy then begin
+                 if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy*1.1 then begin
                     latmin=sortedlats(0)
                     latmax=sortedlats(jj)
                     goto,jump44
@@ -651,7 +669,7 @@ if lonmax gt 360. then lonmax=lonmax-360.
 latmin=min(lat(s))
 latmax=max(lat(s))
 
-; previously marked NH vortices
+; previously marked SH vortices
           pr=where(lat lt 0. and mark ne 0.,ip)
 
 ; make sure gridpoints do not touch sector edge or previously marked vortex
@@ -763,7 +781,7 @@ latmax=max(lat(s))
           sindex=sort(lat(s))
           sortedlats=lat(s(sindex))
           for jj=0,is-2 do begin
-              if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy then begin
+              if abs(sortedlats(jj+1)-sortedlats(jj)) gt dy*1.1 then begin
                  latmin=sortedlats(0)
                  latmax=sortedlats(jj)
                  goto,shjumpout2
@@ -800,7 +818,15 @@ latmax=max(lat(s))
 
 ; if you've made it this far then mark the sucker
           mark(s)=-1.0*(imark+1.0)
-          print,'SH ',imark,'MARKED EDGE ',datbin(n),' BIN # ',n
+;          print,'SH ',imark,'MARKED EDGE ',datbin(n),' BIN # ',n
+;erase
+;!type=2^2+2^3
+;map_set,0,180,0,/contin,/grid,/noeras
+;contour,dat,x,y,levels=reverse(datbin),/noeras,/overplot
+;contour,dat,x,y,levels=[datbin(n+1),datbin(n)],/noeras,/overplot,thick=5
+;index=where(mark lt 0. and lat lt 0.)
+;if index(0) ne -1 then oplot,lon(index),lat(index),psym=4,color=.9*255
+;stop
           imark=imark+1
           goto, jumpshsect
           jumpshbin:
